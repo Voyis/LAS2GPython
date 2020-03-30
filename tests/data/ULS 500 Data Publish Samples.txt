@@ -1,0 +1,22 @@
+
+The .las files are sample outputs of the ULS 500 profile packets that are sent via UDP/IPv4
+
+The filenames are data_<year>_<day of year>_<GPS Time>.las
+Each profile has 1400 points, with intensites from 0-255 and quality metrics from 0-127, and 110 points are marked as withheld
+The points are in a line from the minimum to maximum co-ordinates. X, Y, Z are in meters.
+
+
+File: data_2014_255_80517711.427000.las
+  Min X, Y, Z:          5.123456, 6.123456, 7.123456
+  Max X, Y, Z:          6.522456, 7.522456, 8.522456
+
+  
+File: data_2015_256_80517712.427000.las
+ Min X, Y, Z:          6.523466, 7.523466, 8.523466
+ Max X, Y, Z:          7.922466, 8.922466, 9.922466
+
+
+File: data_2016_257_80517713.427000.las 
+ Min X, Y, Z:          7.923476, 8.923476, 9.923476
+ Max X, Y, Z:          9.322476, 10.322476, 11.322476
+
