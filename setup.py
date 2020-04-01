@@ -1,20 +1,35 @@
 import setuptools
+from sys import platform
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-extension_mod = setuptools.Extension(
-    "las_2g.las_2g_python",
-    ["src/las_2g_python_module.c", "src/las_2g_python.c"],
-    extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS"]
-)
+if "linux" in platform:
+    extension_mod = setuptools.Extension(
+        "las_2g.las_2g_python",
+        ["src/las_2g_python_module.c", "src/las_2g_python.c"],
+        extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS"]
+    )
 
-debug_extension_mod = setuptools.Extension(
-    "las_2g.las_2g_python",
-    ["src/las_2g_python_module.c", "src/las_2g_python.c"],
-    extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS /Zi /0d"],
-    extra_link_args=['/DEBUG']
-)
+    debug_extension_mod = setuptools.Extension(
+        "las_2g.las_2g_python",
+        ["src/las_2g_python_module.c", "src/las_2g_python.c"],
+        extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS", "-O0", "-g", "-DDEBUG", "-fno-inline"],
+        extra_link_args=['-DEBUG']
+    )
+elif "win" in platform:
+    extension_mod = setuptools.Extension(
+        "las_2g.las_2g_python",
+        ["src/las_2g_python_module.c", "src/las_2g_python.c"],
+        extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS"]
+    )
+
+    debug_extension_mod = setuptools.Extension(
+        "las_2g.las_2g_python",
+        ["src/las_2g_python_module.c", "src/las_2g_python.c"],
+        extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS /Zi /0d"],
+        extra_link_args=['/DEBUG']
+    )
 
 setuptools.setup(
     name="las_2g",
@@ -27,5 +42,6 @@ setuptools.setup(
     url="https://github.com/tgrobotics/LAS2GPython",
     packages=setuptools.find_packages(),
     python_requires='>=3.6',
-    ext_modules=[extension_mod]
+    ext_modules=[debug_extension_mod],
+
 )

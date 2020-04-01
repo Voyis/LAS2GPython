@@ -2,6 +2,7 @@
 #define LAS_2G_PYTHON_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define WITHHELD_CLASSIFICATION 0x80
 #define ENTRY_SIZE 28
@@ -13,7 +14,7 @@
  * @brief Structure for containing LAS header information.
  * 
  */
-typedef struct {
+typedef struct __attribute__((__packed__)) {
     char file_signature[4];
     uint16_t file_source_id;
     uint16_t global_encoding;
@@ -53,7 +54,7 @@ typedef struct {
  * @brief structure for the point entries. 2G uses Point Data Record Format 1
  * 
  */
-typedef struct {
+typedef struct __attribute__((__packed__)) {
     int32_t x;
     int32_t y;
     int32_t z;
@@ -72,7 +73,7 @@ typedef struct {
  */
 typedef struct {
     LASHeader * header;
-    LASEntry * entries[];
+    LASEntry * entries;
 } LASFile;
 
 /**
@@ -115,7 +116,7 @@ int write_las( const char * filename, const LASFile * las_files[], size_t number
  * @param las_files Array to pointers to las files. Caller gets ownership of every file pointer and their contained headers and entries.
  * @return int number of las files read, or -1 for error.
  */
-int read_las( const char * filename, LASFile * las_files[]);
+int read_las( const char * filename, LASFile *** las_files);
 
 /**
  * @brief Convert Adjusted GPS to UTC time.

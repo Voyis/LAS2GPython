@@ -20,7 +20,7 @@ const uint64_t diff_to_gps_epoch = (uint64_t)315964800 *(uint64_t)1000000;
 
 char * hello (char * what) {
 
-    char * result = _strdup("Hello World! ");
+    char * result = strdup("Hello World! ");
     return strcat (result, what);
 }
 
@@ -29,25 +29,28 @@ int write_las( const char * filename, const LASFile * las_files[], size_t number
 
     fid = fopen(filename, "wb");
     if (fid == NULL) {
+        printf("Failed to open file %s\n", filename);
         return -1;
     }
 
-    for (int i = 0; i < number_of_file_entries; ++i) {
+    for (size_t i = 0; i < number_of_file_entries; ++i) {
         fwrite(las_files[i]->header, HEADER_SIZE, 1, fid);
         int number_of_entries = las_files[i]->header->number_of_point_records;
         for (int j = 0; j<number_of_entries; ++j) {
-            fwrite(las_files[i]->entries[j], ENTRY_SIZE, 1, fid);
+            fwrite(&(las_files[i]->entries[j]), ENTRY_SIZE, 1, fid);
         }
     }
 
     fclose(fid);
 
+    return 0;
+
 }
 
-int read_las( const char * filename, LASFile * las_files[]){
+int read_las( const char * filename, LASFile *** las_files){
     FILE * fid;
 
-    las_files = NULL;
+    *las_files = NULL;
 
     LASFile * temp_files[1024];
     int temp_count = 0;
@@ -55,34 +58,33 @@ int read_las( const char * filename, LASFile * las_files[]){
     int return_value;
     fid = fopen(filename, "rb");
     if (fid == NULL) {
+        printf("Failed to open file %s\n", filename);
         return -1;
     }
     while (!feof(fid)){
         temp_files[temp_count] = (LASFile*)malloc(sizeof(LASFile));
         temp_files[temp_count]->header = (LASHeader * )malloc(sizeof(LASHeader));
-        return_value = fread(temp_files[temp_count]->header, HEADER_SIZE, 1, fid);
-        if (return_value != HEADER_SIZE) {
+        return_value = fread(temp_files[temp_count]->header, sizeof(LASHeader), 1, fid);
+        if (return_value != 1) { //fread returns the number of HEADER_SIZE read.
             free(temp_files[temp_count]->header);
             free(temp_files[temp_count]);
-            if (las_files != NULL) {
-                free (las_files);
-            }
-            fclose(fid);
-            return -1;
+            //printf("File smaller than header.\n");
+            break;
         }
+
         int number_of_entries = temp_files[temp_count]->header->number_of_point_records;
-        temp_files[temp_count]->entries[0] = (LASEntry*)malloc(number_of_entries*sizeof(LASEntry));
+        temp_files[temp_count]->entries = (LASEntry*)malloc(number_of_entries*sizeof(LASEntry));
         for (int i = 0; i < number_of_entries; ++i) {
-            return_value = fread(temp_files[temp_count]->entries[i], ENTRY_SIZE, 1, fid);
-            if (return_value != ENTRY_SIZE) {
-                free(temp_files[temp_count]->entries[0]);
+            return_value = fread(&(temp_files[temp_count]->entries[i]), sizeof(LASEntry), 1, fid);
+            if (return_value != 1) {
+                free(temp_files[temp_count]->entries);
                 free(temp_files[temp_count]->header);
                 free(temp_files[temp_count]);
-                if (las_files != NULL) {
-                    free (las_files);
+                if (*las_files != NULL) {
+                    free (*las_files);
                 }
-                fclose(fid);
-                return -1;
+                //printf("File too small.\n");
+                break;
             }
         }
         temp_count += 1;
@@ -91,30 +93,30 @@ int read_las( const char * filename, LASFile * las_files[]){
         if (temp_count  >= 1024) {
             LASFile ** temp;
             temp = (LASFile**)malloc(number_of_files*sizeof(LASFile*));
-            if (las_files != NULL) {
-                memcpy(temp, las_files, number_of_files - temp_count);
+            if (*las_files != NULL) {
+                memcpy(temp, *las_files, (number_of_files - temp_count) * sizeof(LASFile**));
             }
-            memcpy(temp, temp_files, temp_count);
+            memcpy(&(temp[number_of_files-temp_count]), temp_files, temp_count * sizeof(LASFile**));
             temp_count = 0;
-            if (las_files != NULL) {
-                free (las_files);
+            if (*las_files != NULL) {
+                free (*las_files);
             }
-            las_files = temp;
+            *las_files = temp;
         }
     }
     LASFile ** temp;
     temp = (LASFile**)malloc(number_of_files*sizeof(LASFile*));
-    if (las_files != NULL) {
-        memcpy(temp, las_files, number_of_files - temp_count);
+    if (*las_files != NULL) {
+        memcpy(temp, *las_files, (number_of_files - temp_count) * sizeof(LASFile**));
     }
-    memcpy(temp, temp_files, temp_count);
-    if (las_files != NULL) {
-        free (las_files);
+    memcpy(&(temp[number_of_files - temp_count]), temp_files, temp_count * sizeof(LASFile**));
+    if (*las_files != NULL) {
+        free (*las_files);
     }
-    las_files = temp;
+    *las_files = temp;
 
     fclose(fid);
-    return 0;
+    return number_of_files;
 }
 
 LASHeader * initLASHeader (uint64_t utc_time, uint32_t number_of_points) {

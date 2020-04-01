@@ -22,6 +22,12 @@
 typedef struct {
     PyObject_HEAD
     uint32_t number_of_point_records;
+    double x_scale;
+    double y_scale;
+    double z_scale;
+    double x_offset;
+    double y_offset;
+    double z_offset;
 } LASHeaderPython;
 
 static void LASHeader_dealloc(LASHeaderPython * self) {
@@ -30,13 +36,25 @@ static void LASHeader_dealloc(LASHeaderPython * self) {
 
 static int LASHeader_init (LASHeaderPython * self, PyObject * args, PyObject *kwargs) {
     
-    self->header = 0;
-
+    self->number_of_point_records = 0;
+    self->x_scale = 1.0;
+    self->y_scale = 1.0;
+    self->z_scale = 1.0;
+    self->x_offset = 0.0;
+    self->y_offset = 0.0;
+    self->z_offset = 0.0;
     return 0;
 }
 
 static PyMemberDef LASHeader_members[] = {
     {"number_of_points", T_UINT, offsetof(LASHeaderPython, number_of_point_records), 0, "Number of points"},
+    {"x_scale", T_DOUBLE, offsetof(LASHeaderPython, x_scale), 0, "x scale factor."},
+    {"y_scale", T_DOUBLE, offsetof(LASHeaderPython, y_scale), 0, "y scale factor."},
+    {"z_scale", T_DOUBLE, offsetof(LASHeaderPython, z_scale), 0, "z scale factor."},
+    {"x_offset", T_DOUBLE, offsetof(LASHeaderPython, x_offset), 0, "x offset factor."},
+    {"y_offset", T_DOUBLE, offsetof(LASHeaderPython, y_offset), 0, "y offset factor."},
+    {"z_offset", T_DOUBLE, offsetof(LASHeaderPython, z_offset), 0, "z offset factor."},
+
     {NULL} //sentinel
 };
 
@@ -138,7 +156,17 @@ static PyObject * LASFile_new(PyTypeObject * type, PyObject * args, PyObject * k
     LASFilePython * self;
     self = (LASFilePython *) type->tp_alloc(type,0);
     if (self != NULL) {
-        self->header = ;
+        self->header = (PyObject *) PyObject_New(LASHeaderPython, &LASHeaderPythonType);
+        if (!self->header) {
+            Py_DECREF(self);
+            return NULL;
+        }
+
+        self->entries = PyList_New(0);
+        if (!self->entries) {
+            Py_DECREF(self);
+            return NULL;
+        }
     }
 
     return (PyObject * ) self;
@@ -165,7 +193,7 @@ static PyTypeObject LASFilePythonType = {
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_init = (initproc) LASFile_init,
-    .tp_new = PyType_GenericNew,
+    .tp_new = LASFile_new,
     .tp_dealloc = (destructor) LASFile_dealloc,
     .tp_members = LASFile_members,
     //.tg_methods = LASFile_methods,
@@ -185,15 +213,61 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
 
     //run the function
     LASFile ** contents = NULL;
-    int result = read_las(filename, contents);
+    int result = read_las(filename, &contents);
 
     if (result < 0) {
         PyErr_SetString(PyExc_RuntimeError, "read_las file failed.");
         return NULL;
     }
 
-    Py_INCREF(Py_None);
-    return Py_None;
+    //TODO put the contents into python types.
+    PyObject * data_list = PyList_New(result);
+    for (int i = 0; i<result; ++i) {
+        LASFilePython * file_entry =  (LASFilePython *) PyObject_CallObject((PyObject *) &LASFilePythonType, NULL);
+
+        ((LASHeaderPython *)file_entry->header)->number_of_point_records = (*contents)[i].header->number_of_point_records;
+        ((LASHeaderPython *)file_entry->header)->x_scale = (*contents)[i].header->x_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->y_scale = (*contents)[i].header->y_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->z_scale = (*contents)[i].header->z_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->x_offset = (*contents)[i].header->x_offset;
+        ((LASHeaderPython *)file_entry->header)->y_offset = (*contents)[i].header->y_offset;
+        ((LASHeaderPython *)file_entry->header)->z_offset = (*contents)[i].header->z_offset;
+
+        for (unsigned int point = 0; point < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++point) {
+            PyObject * point_init = Py_BuildValue("dddhbK", 
+                                                    ((LASHeaderPython *)file_entry->header)->x_scale * (double)(*contents)[i].entries[point].x, 
+                                                    ((LASHeaderPython *)file_entry->header)->y_scale * (double)(*contents)[i].entries[point].y, 
+                                                    ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents)[i].entries[point].z, 
+                                                    (*contents)[i].entries[point].intensity, 
+                                                    (*contents)[i].entries[point].user_data, 
+                                                    AdjustedGPSTimeToUTCTime((*contents)[i].entries[point].gps_time));
+            LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
+            Py_DECREF(point_init);
+
+            PyList_Append(file_entry->entries, (PyObject *) point_entry);
+            Py_DECREF(point_entry);
+        }
+
+        free ((*contents)[i].header);
+        free ((*contents)[i].entries);
+        
+        int ret = PyList_SetItem(data_list, i, (PyObject *)file_entry);
+        //Py_DECREF (file_entry); Don't do this, set item is an exception that doesn't increment the reference count.
+
+        if (ret<0) {
+            for (unsigned int j = i+1; j < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++j) {
+                free((*contents[j]).header);
+                free((*contents[j]).entries);
+            }
+            free (contents);
+            Py_DECREF(data_list);
+            return NULL;
+        }
+    }
+
+    free (contents);
+
+    return data_list;
 
 };
 
@@ -233,10 +307,12 @@ static PyObject * hello_wrapper(PyObject * self, PyObject * args) {
     //run the function
     result = hello(input);
 
-    if (!result) {
+    if (result <= 0) {
         PyErr_SetString(PyExc_RuntimeError, "Hello failed.");
         return NULL;
     }
+
+
 
     ret  = PyUnicode_FromString(result);
     free (result);
