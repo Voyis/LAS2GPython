@@ -18,13 +18,7 @@ const double header_scale = 0.000001;
 const double point_scale = 1000000.;
 const uint64_t diff_to_gps_epoch = (uint64_t)315964800 *(uint64_t)1000000;
 
-char * hello (char * what) {
-
-    char * result = strdup("Hello World! ");
-    return strcat (result, what);
-}
-
-int write_las( const char * filename, const LASFile * las_files[], size_t number_of_file_entries) {
+int write_las( const char * filename, LASFile las_files[], size_t number_of_file_entries) {
     FILE * fid;
 
     fid = fopen(filename, "wb");
@@ -34,11 +28,9 @@ int write_las( const char * filename, const LASFile * las_files[], size_t number
     }
 
     for (size_t i = 0; i < number_of_file_entries; ++i) {
-        fwrite(las_files[i]->header, HEADER_SIZE, 1, fid);
-        int number_of_entries = las_files[i]->header->number_of_point_records;
-        for (int j = 0; j<number_of_entries; ++j) {
-            fwrite(&(las_files[i]->entries[j]), ENTRY_SIZE, 1, fid);
-        }
+        fwrite(las_files[i].header, HEADER_SIZE, 1, fid);
+        int number_of_entries = las_files[i].header->number_of_point_records;
+        fwrite((las_files[i].entries), ENTRY_SIZE, number_of_entries, fid);
     }
 
     fclose(fid);
@@ -119,7 +111,7 @@ int read_las( const char * filename, LASFile *** las_files){
     return number_of_files;
 }
 
-LASHeader * initLASHeader (uint64_t utc_time, uint32_t number_of_points) {
+LASHeader * initLASHeader (uint64_t utc_time_us, uint32_t number_of_points) {
 
     LASHeader * return_header = (LASHeader *) malloc(sizeof (LASHeader));
 
@@ -127,7 +119,7 @@ LASHeader * initLASHeader (uint64_t utc_time, uint32_t number_of_points) {
         return NULL;
     }
 
-    uint64_t adj_pps_time = (uint64_t)(UTCTimeToAdjustedGPSTime(utc_time) * 1E6);
+    uint64_t adj_pps_time = (uint64_t)(UTCTimeToAdjustedGPSTime(utc_time_us));
 
     return_header->file_signature[0] = 'L';
     return_header->file_signature[1] = 'A';
@@ -169,23 +161,19 @@ LASHeader * initLASHeader (uint64_t utc_time, uint32_t number_of_points) {
     return return_header;
 }
 
-LASEntry * initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t intensity, uint8_t quality) {
-    LASEntry * new_entry = (LASEntry * ) malloc(sizeof(LASEntry));
+LASEntry initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t intensity, uint8_t quality) {
+    LASEntry  new_entry;
 
-    if (!new_entry) {
-        return NULL;
-    }
-
-    new_entry->x = (uint32_t)(x * point_scale);
-    new_entry->y = (uint32_t)(y * point_scale);
-    new_entry->z = (uint32_t)(z * point_scale);
-    new_entry->intensity = intensity;
-    new_entry->bit_field = 0;
-    new_entry->classification = 0;
-    new_entry->scan_angle = 0;
-    new_entry->user_data = quality;
-    new_entry->point_source_id = 0;
-    new_entry->gps_time = UTCTimeToAdjustedGPSTime(utc_time);
+    new_entry.x = (uint32_t)(x * point_scale);
+    new_entry.y = (uint32_t)(y * point_scale);
+    new_entry.z = (uint32_t)(z * point_scale);
+    new_entry.intensity = intensity;
+    new_entry.bit_field = 0;
+    new_entry.classification = 0;
+    new_entry.scan_angle = 0;
+    new_entry.user_data = quality;
+    new_entry.point_source_id = 0;
+    new_entry.gps_time = UTCTimeToAdjustedGPSTime(utc_time);
     
 
     return new_entry;
@@ -196,7 +184,7 @@ uint64_t AdjustedGPSTimeToUTCTime(double adj_pps_time) {
     const uint64_t gps_offset = (uint64_t)(18*1E6); // 2017 value
 
     uint64_t utc_time = diff_to_gps_epoch + (uint64_t)(adj_pps_time * 1E6) +
-                        gps_offset;         // epoch difference + continueing adjustements
+                        -gps_offset;         // epoch difference + continueing adjustements
     utc_time += 1000000000ull * 1000000ull; // adjusted time offset 10^9 seconds;
 
     return utc_time;
@@ -206,7 +194,7 @@ double UTCTimeToAdjustedGPSTime(uint64_t utc_time) {
 
     uint32_t offsetSeconds = 18;
 
-    double adjusted_time = (double)(utc_time - diff_to_gps_epoch);
+    double adjusted_time = (double)(utc_time- diff_to_gps_epoch);
 
     adjusted_time /= 1000000; // to seconds
     adjusted_time += offsetSeconds;

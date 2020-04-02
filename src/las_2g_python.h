@@ -95,9 +95,9 @@ LASHeader * initLASHeader (uint64_t utc_time, uint32_t number_of_points);
  * @param z double in m
  * @param intensity
  * @param quality
- * @return LASEntry* created on the heap, ownership passed to the caller.
+ * @return LASEntry .
  */
-LASEntry * initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t intensity, uint8_t quality);
+LASEntry  initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t intensity, uint8_t quality);
 
 /**
  * @brief Write the LAS file consisting of a header and an array of entries onto the hard drive.
@@ -107,7 +107,7 @@ LASEntry * initLASEntry (uint64_t utc_time, double x, double y, double z, uint16
  * @param number_of_file_entries number of entries
  * @return int Number of files written, or -1 if failure
  */
-int write_las( const char * filename, const LASFile * las_files[], size_t number_of_file_entries);
+int write_las( const char * filename, LASFile las_files[], size_t number_of_file_entries);
 
 /**
  * @brief Read a LAS file from the hard drive
@@ -132,13 +132,5 @@ uint64_t AdjustedGPSTimeToUTCTime(double adj_pps_time);
  * @return adjusted GPS time in seconds
  */
 double UTCTimeToAdjustedGPSTime(uint64_t utc_time);
-
-/**
- * @brief Test function
- * 
- * @param what 
- * @return char* 
- */
-char * hello (char * what);
 
 #endif

@@ -28,6 +28,7 @@ typedef struct {
     double x_offset;
     double y_offset;
     double z_offset;
+    uint64_t utc_time;
 } LASHeaderPython;
 
 static void LASHeader_dealloc(LASHeaderPython * self) {
@@ -43,6 +44,7 @@ static int LASHeader_init (LASHeaderPython * self, PyObject * args, PyObject *kw
     self->x_offset = 0.0;
     self->y_offset = 0.0;
     self->z_offset = 0.0;
+    self->utc_time = 0;
     return 0;
 }
 
@@ -54,6 +56,7 @@ static PyMemberDef LASHeader_members[] = {
     {"x_offset", T_DOUBLE, offsetof(LASHeaderPython, x_offset), 0, "x offset factor."},
     {"y_offset", T_DOUBLE, offsetof(LASHeaderPython, y_offset), 0, "y offset factor."},
     {"z_offset", T_DOUBLE, offsetof(LASHeaderPython, z_offset), 0, "z offset factor."},
+    {"utc_time", T_DOUBLE, offsetof(LASHeaderPython, utc_time), 0, "utc_time in us from epoch"},
 
     {NULL} //sentinel
 };
@@ -225,22 +228,23 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
     for (int i = 0; i<result; ++i) {
         LASFilePython * file_entry =  (LASFilePython *) PyObject_CallObject((PyObject *) &LASFilePythonType, NULL);
 
-        ((LASHeaderPython *)file_entry->header)->number_of_point_records = (*contents)[i].header->number_of_point_records;
-        ((LASHeaderPython *)file_entry->header)->x_scale = (*contents)[i].header->x_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->y_scale = (*contents)[i].header->y_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->z_scale = (*contents)[i].header->z_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->x_offset = (*contents)[i].header->x_offset;
-        ((LASHeaderPython *)file_entry->header)->y_offset = (*contents)[i].header->y_offset;
-        ((LASHeaderPython *)file_entry->header)->z_offset = (*contents)[i].header->z_offset;
+        ((LASHeaderPython *)file_entry->header)->number_of_point_records = (*contents[i]).header->number_of_point_records;
+        ((LASHeaderPython *)file_entry->header)->x_scale = (*contents[i]).header->x_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->y_scale = (*contents[i]).header->y_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->z_scale = (*contents[i]).header->z_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->x_offset = (*contents[i]).header->x_offset;
+        ((LASHeaderPython *)file_entry->header)->y_offset = (*contents[i]).header->y_offset;
+        ((LASHeaderPython *)file_entry->header)->z_offset = (*contents[i]).header->z_offset;
+        ((LASHeaderPython *)file_entry->header)->utc_time = AdjustedGPSTimeToUTCTime((*contents[i]).header->guid_data_4);
 
         for (unsigned int point = 0; point < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++point) {
             PyObject * point_init = Py_BuildValue("dddhbK", 
-                                                    ((LASHeaderPython *)file_entry->header)->x_scale * (double)(*contents)[i].entries[point].x, 
-                                                    ((LASHeaderPython *)file_entry->header)->y_scale * (double)(*contents)[i].entries[point].y, 
-                                                    ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents)[i].entries[point].z, 
-                                                    (*contents)[i].entries[point].intensity, 
-                                                    (*contents)[i].entries[point].user_data, 
-                                                    AdjustedGPSTimeToUTCTime((*contents)[i].entries[point].gps_time));
+                                                    ((LASHeaderPython *)file_entry->header)->x_scale * (double)(*contents[i]).entries[point].x, 
+                                                    ((LASHeaderPython *)file_entry->header)->y_scale * (double)(*contents[i]).entries[point].y, 
+                                                    ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents[i]).entries[point].z, 
+                                                    (*contents[i]).entries[point].intensity, 
+                                                    (*contents[i]).entries[point].user_data, 
+                                                    AdjustedGPSTimeToUTCTime((*contents[i]).entries[point].gps_time));
             LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
             Py_DECREF(point_init);
 
@@ -248,8 +252,8 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
             Py_DECREF(point_entry);
         }
 
-        free ((*contents)[i].header);
-        free ((*contents)[i].entries);
+        free ((*contents[i]).header);
+        free ((*contents[i]).entries);
         
         int ret = PyList_SetItem(data_list, i, (PyObject *)file_entry);
         //Py_DECREF (file_entry); Don't do this, set item is an exception that doesn't increment the reference count.
@@ -273,16 +277,60 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
 
 static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
     char * filename;
-
+    PyObject * las_files = NULL;
     //parse arguments
-    if (!PyArg_ParseTuple(args, "s", &filename)) {
+    if (!PyArg_ParseTuple(args, "sO", &filename, &las_files)) {
         return NULL;
     }
 
-    //run the function
+    if (!PyList_Check (las_files) ) {
+        PyErr_SetString(PyExc_TypeError, "write_las requires a list of LASFiles as input.");
+        Py_DECREF(las_files);
+        return NULL;
+    }
+    
+    Py_ssize_t num_of_files = PyList_Size(las_files);
+    if (num_of_files <= 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Require at least on LASFile to write.");
+        Py_DECREF(las_files);
+        return NULL;
+    }
 
-    int result = -1;
+    LASFile * las_files_c = NULL;
+    las_files_c = (LASFile * )malloc(num_of_files * sizeof(LASFile));
 
+    for (Py_ssize_t i = 0; i < num_of_files; ++i) {
+        LASFilePython * las_file = (LASFilePython* )PyList_GetItem( (PyObject *)las_files, i);
+        Py_ssize_t number_of_points = ((LASHeaderPython *)((LASFilePython*)las_file)->header)->number_of_point_records;
+
+        las_files_c[i].header = initLASHeader( ((LASHeaderPython *)((LASFilePython*)las_file)->header)->utc_time, 
+                                            number_of_points);
+
+        
+        las_files_c[i].entries = (LASEntry *) malloc (number_of_points * sizeof (LASEntry));
+        
+        for (Py_ssize_t point = 0; point < PyList_Size(las_file->entries); ++point) {
+            LASEntryPython * entry = (LASEntryPython *)PyList_GetItem(las_file->entries, point);
+
+            las_files_c[i].entries[point] = initLASEntry( entry->utc_time,
+                                            entry->x,
+                                            entry->y,
+                                            entry->z,
+                                            entry->intensity,
+                                            entry->quality );
+        }
+    }
+
+    //TODO run the write_las c function
+    int result = write_las(filename, las_files_c, num_of_files); 
+
+    //TODO release all memory
+    for (Py_ssize_t i; i < num_of_files; ++i) {
+        free (las_files_c[i].header);
+        free (las_files_c[i].entries);
+    }
+    free (las_files_c);
+    
     if (result < 0) {
         PyErr_SetString(PyExc_RuntimeError, "write_las failed.");
         return NULL;
@@ -294,41 +342,24 @@ static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
 };
 
 
-static PyObject * hello_wrapper(PyObject * self, PyObject * args) {
-    char * input;
-    char * result;
-    PyObject * ret;
-
-    //parse arguments
-    if (!PyArg_ParseTuple(args, "s", &input)) {
-        return NULL;
-    }
-
-    //run the function
-    result = hello(input);
-
-    if (result <= 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Hello failed.");
-        return NULL;
-    }
-
-
-
-    ret  = PyUnicode_FromString(result);
-    free (result);
-
-    return ret;
-
-};
-
 //-----------------------------------------------------------------
 // Module setup
 //-----------------------------------------------------------------
 
+PyDoc_STRVAR(read_las_doc,
+	"read_las(filename) -> List of Files\n\n"
+	"Reads in a LAS File and returns a list of every individual LAS \n"
+    "file/profile in the set.\n"
+	"Returns a list of LASFiles\n");
+
+PyDoc_STRVAR(write_las_doc,
+    "write_las(filename, list_of_LASFiles)\n\n"
+    "Write a las file to the hard drive given the filename and \n"
+    "a list of LASFiles.");
+
 static PyMethodDef LASMethods[] = {
-    {"hello", hello_wrapper, METH_VARARGS, "Say Hello!"},
-    {"read_las", read_las_wrapper, METH_VARARGS, "Read a LAS file."},
-    {"write_las", write_las_wrapper, METH_VARARGS, "Write the LAS file."},
+    {"read_las", read_las_wrapper, METH_VARARGS, read_las_doc},
+    {"write_las", write_las_wrapper, METH_VARARGS, write_las_doc},
     {NULL, NULL, 0, NULL} //sentinel
 };
 
