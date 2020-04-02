@@ -9,12 +9,15 @@
 #define HEADER_SIZE 0xE3 // the header size
 #define HEADER_STRING_SIZE 32 // the size of the strings for the system identifier and generating software
 
+#pragma pack (push)
+#pragma pack(1)
 
 /**
  * @brief Structure for containing LAS header information.
  * 
  */
-typedef struct __attribute__((__packed__)) {
+//typedef struct __attribute__((__packed__)) {
+typedef struct {
     char file_signature[4];
     uint16_t file_source_id;
     uint16_t global_encoding;
@@ -54,7 +57,8 @@ typedef struct __attribute__((__packed__)) {
  * @brief structure for the point entries. 2G uses Point Data Record Format 1
  * 
  */
-typedef struct __attribute__((__packed__)) {
+//typedef struct __attribute__((__packed__)) {
+typedef struct {
     int32_t x;
     int32_t y;
     int32_t z;
@@ -66,6 +70,8 @@ typedef struct __attribute__((__packed__)) {
     uint16_t point_source_id;
     double gps_time;
 } LASEntry;
+
+#pragma pack (pop)
 
 /**
  * @brief structure for a single LAS file. 
@@ -121,10 +127,10 @@ int read_las( const char * filename, LASFile *** las_files);
 /**
  * @brief Convert Adjusted GPS to UTC time.
  * 
- * @param adj_pps_time in s
+ * @param adj_pps_time in us
  * @return uint64_t in us
  */
-uint64_t AdjustedGPSTimeToUTCTime(double adj_pps_time);
+uint64_t AdjustedGPSTimeToUTCTime(uint64_t adj_pps_time);
 
 /**
  * Convert UTC time to adjusted GPS time (GPS time - 1x10^9)

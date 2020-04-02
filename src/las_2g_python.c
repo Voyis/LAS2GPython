@@ -47,7 +47,7 @@ int read_las( const char * filename, LASFile *** las_files){
     LASFile * temp_files[1024];
     int temp_count = 0;
     int number_of_files = 0;
-    int return_value;
+    size_t return_value;
     fid = fopen(filename, "rb");
     if (fid == NULL) {
         printf("Failed to open file %s\n", filename);
@@ -180,11 +180,11 @@ LASEntry initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t
 }
 
 
-uint64_t AdjustedGPSTimeToUTCTime(double adj_pps_time) {
+uint64_t AdjustedGPSTimeToUTCTime(uint64_t adj_pps_time) {
     const uint64_t gps_offset = (uint64_t)(18*1E6); // 2017 value
 
-    uint64_t utc_time = diff_to_gps_epoch + (uint64_t)(adj_pps_time * 1E6) +
-                        -gps_offset;         // epoch difference + continueing adjustements
+    uint64_t utc_time = diff_to_gps_epoch + (uint64_t)(adj_pps_time * 1E6) -
+                        gps_offset;         // epoch difference + continueing adjustements
     utc_time += 1000000000ull * 1000000ull; // adjusted time offset 10^9 seconds;
 
     return utc_time;

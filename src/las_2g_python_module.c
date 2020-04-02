@@ -244,7 +244,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
                                                     ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents[i]).entries[point].z, 
                                                     (*contents[i]).entries[point].intensity, 
                                                     (*contents[i]).entries[point].user_data, 
-                                                    AdjustedGPSTimeToUTCTime((*contents[i]).entries[point].gps_time));
+                                                    AdjustedGPSTimeToUTCTime((uint64_t)(*contents[i]).entries[point].gps_time));
             LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
             Py_DECREF(point_init);
 
@@ -304,7 +304,7 @@ static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
         Py_ssize_t number_of_points = ((LASHeaderPython *)((LASFilePython*)las_file)->header)->number_of_point_records;
 
         las_files_c[i].header = initLASHeader( ((LASHeaderPython *)((LASFilePython*)las_file)->header)->utc_time, 
-                                            number_of_points);
+                                            (uint32_t)number_of_points);
 
         
         las_files_c[i].entries = (LASEntry *) malloc (number_of_points * sizeof (LASEntry));
@@ -321,11 +321,9 @@ static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
         }
     }
 
-    //TODO run the write_las c function
     int result = write_las(filename, las_files_c, num_of_files); 
 
-    //TODO release all memory
-    for (Py_ssize_t i; i < num_of_files; ++i) {
+    for (Py_ssize_t i = 0; i < num_of_files; ++i) {
         free (las_files_c[i].header);
         free (las_files_c[i].entries);
     }
