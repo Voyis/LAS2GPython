@@ -102,7 +102,7 @@ static int LASEntry_init (LASEntryPython * self, PyObject * args, PyObject *kwar
 
     static char * kwlist [] = {"x", "y", "z", "intensity", "quality", "utc_time_us"};
 
-    if (!PyArg_ParseTupleAndKeywords (args, kwargs, "|dddhbK", kwlist, &x, &y, &z, &intensity, &quality, &utc_time)) {
+    if (!PyArg_ParseTupleAndKeywords (args, kwargs, "|dddHbK", kwlist, &x, &y, &z, &intensity, &quality, &utc_time)) {
         return -1;
     }
 
@@ -227,6 +227,9 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
     PyObject * data_list = PyList_New(result);
     for (int i = 0; i<result; ++i) {
         LASFilePython * file_entry =  (LASFilePython *) PyObject_CallObject((PyObject *) &LASFilePythonType, NULL);
+        if (!file_entry){
+            PyErr_Print();
+        }
 
         ((LASHeaderPython *)file_entry->header)->number_of_point_records = (*contents[i]).header->number_of_point_records;
         ((LASHeaderPython *)file_entry->header)->x_scale = (*contents[i]).header->x_scale_factor;
@@ -237,19 +240,38 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
         ((LASHeaderPython *)file_entry->header)->z_offset = (*contents[i]).header->z_offset;
         ((LASHeaderPython *)file_entry->header)->utc_time = AdjustedGPSTimeToUTCTime((*contents[i]).header->guid_data_4);
 
+        PyObject * temp = file_entry->entries;
+        file_entry->entries = PyList_New( ((LASHeaderPython *)file_entry->header)->number_of_point_records );
+        if (!file_entry->entries){
+            PyErr_Print();
+        }
+        Py_DECREF (temp);
+
         for (unsigned int point = 0; point < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++point) {
-            PyObject * point_init = Py_BuildValue("dddhbK", 
+            PyObject * point_init = Py_BuildValue("dddHbK", 
                                                     ((LASHeaderPython *)file_entry->header)->x_scale * (double)(*contents[i]).entries[point].x, 
                                                     ((LASHeaderPython *)file_entry->header)->y_scale * (double)(*contents[i]).entries[point].y, 
                                                     ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents[i]).entries[point].z, 
                                                     (*contents[i]).entries[point].intensity, 
                                                     (*contents[i]).entries[point].user_data, 
                                                     AdjustedGPSTimeToUTCTime((uint64_t)(*contents[i]).entries[point].gps_time));
+            if (!point_init){
+                PyErr_Print();
+            }
+
             LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
+            if (!point_entry){
+               PyErr_Print();
+            }
             Py_DECREF(point_init);
 
-            PyList_Append(file_entry->entries, (PyObject *) point_entry);
-            Py_DECREF(point_entry);
+            //PyList_Append(file_entry->entries, (PyObject *) point_entry );
+            //Py_DECREF(point_entry);
+            if (PyList_SetItem(file_entry->entries,  point, (PyObject *) point_entry ) < 0) {
+                PyErr_Print();
+            }
+
+            
         }
 
         free ((*contents[i]).header);
