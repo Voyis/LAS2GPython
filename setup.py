@@ -43,6 +43,6 @@ setuptools.setup(
     url="https://github.com/tgrobotics/LAS2GPython",
     packages=setuptools.find_packages(),
     python_requires='>=3.6',
-    ext_modules=[extension_mod],
+    ext_modules=[debug_extension_mod],
 
 )

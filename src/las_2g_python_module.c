@@ -215,84 +215,152 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
     }
 
     //run the function
-    LASFile ** contents = NULL;
-    int result = read_las(filename, &contents);
+    LASHeader header;
+    LASEntry *entries = NULL;
+    ssize_t size_entries = 0;
 
-    if (result < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "read_las file failed.");
+    FILE * fid;
+    fid = fopen(filename, "rb");
+    if (fid == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to open LAS file.\n");
         return NULL;
     }
 
-    //TODO put the contents into python types.
-    PyObject * data_list = PyList_New(result);
-    for (int i = 0; i<result; ++i) {
+    PyObject * data_list = PyList_New(0);
+    if (!data_list) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create list for LAS file entries.");
+        fclose(fid);
+        return NULL;
+    }
+
+    while (!feof(fid)) {
         LASFilePython * file_entry =  (LASFilePython *) PyObject_CallObject((PyObject *) &LASFilePythonType, NULL);
         if (!file_entry){
-            PyErr_Print();
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create LASFile Object");
+            Py_DECREF (data_list);
+            if (entries != NULL) {
+                free (entries);
+            }
+            fclose(fid);
+            return NULL;
         }
 
-        ((LASHeaderPython *)file_entry->header)->number_of_point_records = (*contents[i]).header->number_of_point_records;
-        ((LASHeaderPython *)file_entry->header)->x_scale = (*contents[i]).header->x_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->y_scale = (*contents[i]).header->y_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->z_scale = (*contents[i]).header->z_scale_factor;
-        ((LASHeaderPython *)file_entry->header)->x_offset = (*contents[i]).header->x_offset;
-        ((LASHeaderPython *)file_entry->header)->y_offset = (*contents[i]).header->y_offset;
-        ((LASHeaderPython *)file_entry->header)->z_offset = (*contents[i]).header->z_offset;
-        ((LASHeaderPython *)file_entry->header)->utc_time = AdjustedGPSTimeToUTCTime((*contents[i]).header->guid_data_4);
+        if (!read_header(fid, &header)) {
+            //PyErr_SetString(PyExc_RuntimeError, "Failed to read header from file.");
+            Py_DECREF(file_entry);
+            break; //special case, at the end of the file, sometimes we get a header misread rather than a feof.
+        }
+
+        uint32_t header_entries = header.number_of_point_records;
+
+        ((LASHeaderPython *)file_entry->header)->number_of_point_records = header_entries;
+        ((LASHeaderPython *)file_entry->header)->x_scale = header.x_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->y_scale = header.y_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->z_scale = header.z_scale_factor;
+        ((LASHeaderPython *)file_entry->header)->x_offset = header.x_offset;
+        ((LASHeaderPython *)file_entry->header)->y_offset = header.y_offset;
+        ((LASHeaderPython *)file_entry->header)->z_offset = header.z_offset;
+        ((LASHeaderPython *)file_entry->header)->utc_time = AdjustedGPSTimeusToUTCTimeus(header.guid_data_4);
 
         PyObject * temp = file_entry->entries;
         file_entry->entries = PyList_New( ((LASHeaderPython *)file_entry->header)->number_of_point_records );
         if (!file_entry->entries){
-            PyErr_Print();
+            PyErr_SetString(PyExc_RuntimeError, "Could not create list for LAS Entries.");
+            Py_DECREF(file_entry);
+            Py_DECREF(data_list);
+            if (entries != NULL) {
+                free (entries);
+            }
+            fclose(fid);
+            return NULL;
         }
         Py_DECREF (temp);
 
+        if (size_entries != header_entries) {
+            if (entries != NULL) {
+                free (entries);
+            }
+            entries = (LASEntry *)malloc(header_entries * sizeof(LASEntry));
+            size_entries = header_entries;
+        }
+        uint32_t num_entries = read_entry(fid, entries, header_entries);
+        if (num_entries != header_entries) {
+            PyErr_SetString(PyExc_RuntimeError, "Could not load entry from file.");
+            Py_DECREF(file_entry);
+            Py_DECREF(data_list);
+            if (entries != NULL) {
+                free (entries);
+            }
+            fclose(fid);
+            return NULL;
+        }
+
         for (unsigned int point = 0; point < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++point) {
             PyObject * point_init = Py_BuildValue("dddHbK", 
-                                                    ((LASHeaderPython *)file_entry->header)->x_scale * (double)(*contents[i]).entries[point].x, 
-                                                    ((LASHeaderPython *)file_entry->header)->y_scale * (double)(*contents[i]).entries[point].y, 
-                                                    ((LASHeaderPython *)file_entry->header)->z_scale * (double)(*contents[i]).entries[point].z, 
-                                                    (*contents[i]).entries[point].intensity, 
-                                                    (*contents[i]).entries[point].user_data, 
-                                                    AdjustedGPSTimeToUTCTime((uint64_t)(*contents[i]).entries[point].gps_time));
+                                                    ((LASHeaderPython *)file_entry->header)->x_scale * (double)entries[point].x, 
+                                                    ((LASHeaderPython *)file_entry->header)->y_scale * (double)entries[point].y, 
+                                                    ((LASHeaderPython *)file_entry->header)->z_scale * (double)entries[point].z, 
+                                                    entries[point].intensity, 
+                                                    entries[point].user_data, 
+                                                    AdjustedGPSTimeusToUTCTimeus((uint64_t)(entries[point].gps_time*1E6)));
             if (!point_init){
-                PyErr_Print();
+                PyErr_SetString(PyExc_RuntimeError, "Failed to build value for setting up LASEntries");
+                Py_DECREF(file_entry);
+                Py_DECREF(data_list);
+                if (entries != NULL) {
+                    free (entries);
+                }
+                fclose(fid);
+                return NULL;
             }
 
             LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
             if (!point_entry){
-               PyErr_Print();
+               PyErr_SetString(PyExc_RuntimeError, "Failed to create a LASEntry.");
+               Py_DECREF(file_entry);
+               Py_DECREF(data_list);
+               if (entries != NULL) {
+                    free (entries);
+                }
+                fclose(fid);
+               return NULL;
             }
             Py_DECREF(point_init);
 
             //PyList_Append(file_entry->entries, (PyObject *) point_entry );
             //Py_DECREF(point_entry);
             if (PyList_SetItem(file_entry->entries,  point, (PyObject *) point_entry ) < 0) {
-                PyErr_Print();
-            }
-
-            
+                PyErr_SetString(PyExc_RuntimeError, "Failed to add LASEntry to LASFile entries list.");
+                Py_DECREF(point_entry);
+                Py_DECREF(file_entry);
+                Py_DECREF(data_list);
+                if (entries != NULL) {
+                    free (entries);
+                }
+                fclose(fid);
+                return NULL;
+            }   
         }
 
-        free ((*contents[i]).header);
-        free ((*contents[i]).entries);
-        
-        int ret = PyList_SetItem(data_list, i, (PyObject *)file_entry);
-        //Py_DECREF (file_entry); Don't do this, set item is an exception that doesn't increment the reference count.
+        int ret = PyList_Append(data_list, (PyObject *)file_entry);
+        Py_DECREF (file_entry); 
 
         if (ret<0) {
-            for (unsigned int j = i+1; j < ((LASHeaderPython *)file_entry->header)->number_of_point_records; ++j) {
-                free((*contents[j]).header);
-                free((*contents[j]).entries);
-            }
-            free (contents);
+            PyErr_SetString(PyExc_RuntimeError, "Unable to add LASFile to list.");
+            Py_DECREF(file_entry);
             Py_DECREF(data_list);
+            if (entries != NULL) {
+                free (entries);
+            }
+            fclose(fid);
             return NULL;
         }
     }
 
-    free (contents);
-
+    if (entries != NULL) {
+        free (entries);
+    }
+    fclose(fid);
     return data_list;
 
 };
@@ -304,6 +372,7 @@ static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
     if (!PyArg_ParseTuple(args, "sO", &filename, &las_files)) {
         return NULL;
     }
+    Py_INCREF(las_files);
 
     if (!PyList_Check (las_files) ) {
         PyErr_SetString(PyExc_TypeError, "write_las requires a list of LASFiles as input.");
@@ -318,47 +387,89 @@ static PyObject * write_las_wrapper(PyObject * self, PyObject * args) {
         return NULL;
     }
 
-    LASFile * las_files_c = NULL;
-    las_files_c = (LASFile * )malloc(num_of_files * sizeof(LASFile));
+    FILE * fid;
+
+    fid = fopen(filename, "wb");
+    if (fid == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to open output file.\n");
+        Py_DECREF(las_files);
+        return NULL;
+    }
 
     for (Py_ssize_t i = 0; i < num_of_files; ++i) {
         LASFilePython * las_file = (LASFilePython* )PyList_GetItem( (PyObject *)las_files, i);
+        if (!las_file) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to read LASFile from list.");
+            Py_DECREF(las_files);
+            fclose(fid);
+            return NULL;
+        }
+
         Py_ssize_t number_of_points = ((LASHeaderPython *)((LASFilePython*)las_file)->header)->number_of_point_records;
 
-        las_files_c[i].header = initLASHeader( ((LASHeaderPython *)((LASFilePython*)las_file)->header)->utc_time, 
+        LASHeader *header;
+        header = initLASHeader( ((LASHeaderPython *)((LASFilePython*)las_file)->header)->utc_time, 
                                             (uint32_t)number_of_points);
+        if (!header) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to allocate memory for header.");
+            Py_DECREF(las_files);
+            free(header);
+            fclose(fid);
+            return NULL;
+        }
 
-        
-        las_files_c[i].entries = (LASEntry *) malloc (number_of_points * sizeof (LASEntry));
-        
+        LASEntry *entries = (LASEntry *) malloc (number_of_points * sizeof (LASEntry));
+        if (!entries) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to allocate memory for entries.");
+            Py_DECREF(las_files);
+            free(header);
+            fclose(fid);
+            return NULL;
+        }
         for (Py_ssize_t point = 0; point < PyList_Size(las_file->entries); ++point) {
             LASEntryPython * entry = (LASEntryPython *)PyList_GetItem(las_file->entries, point);
+            if (!entry) {
+                PyErr_SetString(PyExc_RuntimeError, "Failed to get LASEntry for entry list.");
+                free(header);
+                free(entries);
+                Py_DECREF(las_files);
+                fclose(fid);
+                return NULL;
+            }
 
-            las_files_c[i].entries[point] = initLASEntry( entry->utc_time,
+            entries[point] = initLASEntry( entry->utc_time,
                                             entry->x,
                                             entry->y,
                                             entry->z,
                                             entry->intensity,
                                             entry->quality );
         }
+
+        if (!write_header(fid, header)) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to save LASheader.");
+            free(header);
+            free(entries);
+            Py_DECREF(las_files);
+            fclose(fid);
+            return NULL;
+        }
+        if (!write_entries(fid, entries, PyList_Size(las_file->entries))) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to save LASEntry.");
+            free(header);
+            free(entries);
+            Py_DECREF(las_files);
+            fclose(fid);
+            return NULL;
+        }
+        free(header);
+        free(entries);
     }
 
-    int result = write_las(filename, las_files_c, num_of_files); 
+    fclose(fid);
 
-    for (Py_ssize_t i = 0; i < num_of_files; ++i) {
-        free (las_files_c[i].header);
-        free (las_files_c[i].entries);
-    }
-    free (las_files_c);
-    
-    if (result < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "write_las failed.");
-        return NULL;
-    }
-
+    Py_DECREF(las_files);
     Py_INCREF (Py_None);
     return Py_None;
-
 };
 
 

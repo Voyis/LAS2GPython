@@ -11,12 +11,27 @@
 
 #include "las_2g_python.h"
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+
 
 const double header_scale = 0.000001;
 const double point_scale = 1000000.;
 const uint64_t diff_to_gps_epoch = (uint64_t)315964800 *(uint64_t)1000000;
+
+int read_header(FILE * fid, LASHeader * header) {
+    return fread((void *)header, sizeof(LASHeader), 1, fid);
+}
+
+int read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries) {
+    return fread((void *)entries, sizeof(LASEntry), number_of_entries, fid);
+}
+
+int write_header(FILE * fid, LASHeader * header) {
+    return fwrite((void *)header, sizeof(LASHeader), 1, fid);
+}
+
+int write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries) {
+    return fwrite((void *)(entries), sizeof(LASEntry), number_of_entries, fid);
+}
 
 int write_las( const char * filename, LASFile las_files[], size_t number_of_file_entries) {
     FILE * fid;
@@ -28,15 +43,14 @@ int write_las( const char * filename, LASFile las_files[], size_t number_of_file
     }
 
     for (size_t i = 0; i < number_of_file_entries; ++i) {
-        fwrite(las_files[i].header, HEADER_SIZE, 1, fid);
+        write_header (fid, las_files[i].header);
         int number_of_entries = las_files[i].header->number_of_point_records;
-        fwrite((las_files[i].entries), ENTRY_SIZE, number_of_entries, fid);
+        write_entries(fid, las_files[i].entries, number_of_entries);
     }
 
     fclose(fid);
 
     return 0;
-
 }
 
 int read_las( const char * filename, LASFile *** las_files){
@@ -56,7 +70,7 @@ int read_las( const char * filename, LASFile *** las_files){
     while (!feof(fid)){
         temp_files[temp_count] = (LASFile*)malloc(sizeof(LASFile));
         temp_files[temp_count]->header = (LASHeader * )malloc(sizeof(LASHeader));
-        return_value = fread(temp_files[temp_count]->header, sizeof(LASHeader), 1, fid);
+        return_value = read_header(fid, temp_files[temp_count]->header);
         if (return_value != 1) { //fread returns the number of HEADER_SIZE read.
             free(temp_files[temp_count]->header);
             free(temp_files[temp_count]);
@@ -65,6 +79,12 @@ int read_las( const char * filename, LASFile *** las_files){
         }
 
         int number_of_entries = temp_files[temp_count]->header->number_of_point_records;
+        if (number_of_entries > 2048) {
+            printf("Too many entries is header, corrupted file.");
+            free(temp_files[temp_count]->header);
+            free(temp_files[temp_count]);
+            break;
+        }
         temp_files[temp_count]->entries = (LASEntry*)malloc(number_of_entries*sizeof(LASEntry));
         for (int i = 0; i < number_of_entries; ++i) {
             return_value = fread(&(temp_files[temp_count]->entries[i]), sizeof(LASEntry), 1, fid);
@@ -119,7 +139,7 @@ LASHeader * initLASHeader (uint64_t utc_time_us, uint32_t number_of_points) {
         return NULL;
     }
 
-    uint64_t adj_pps_time = (uint64_t)(UTCTimeToAdjustedGPSTime(utc_time_us));
+    uint64_t adj_pps_time = (uint64_t)(UTCTimeusToAdjustedGPSTime(utc_time_us));
 
     return_header->file_signature[0] = 'L';
     return_header->file_signature[1] = 'A';
@@ -173,24 +193,24 @@ LASEntry initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_t
     new_entry.scan_angle = 0;
     new_entry.user_data = quality;
     new_entry.point_source_id = 0;
-    new_entry.gps_time = UTCTimeToAdjustedGPSTime(utc_time);
+    new_entry.gps_time = UTCTimeusToAdjustedGPSTime(utc_time);
     
 
     return new_entry;
 }
 
 
-uint64_t AdjustedGPSTimeToUTCTime(uint64_t adj_pps_time) {
+uint64_t AdjustedGPSTimeusToUTCTimeus(uint64_t adj_pps_time) {
     const uint64_t gps_offset = (uint64_t)(18*1E6); // 2017 value
 
-    uint64_t utc_time = diff_to_gps_epoch + (uint64_t)(adj_pps_time * 1E6) -
+    uint64_t utc_time = diff_to_gps_epoch + (uint64_t)(adj_pps_time) -
                         gps_offset;         // epoch difference + continueing adjustements
     utc_time += 1000000000ull * 1000000ull; // adjusted time offset 10^9 seconds;
 
     return utc_time;
 }
 
-double UTCTimeToAdjustedGPSTime(uint64_t utc_time) {
+double UTCTimeusToAdjustedGPSTime(uint64_t utc_time) {
 
     uint32_t offsetSeconds = 18;
 

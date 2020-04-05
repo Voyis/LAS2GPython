@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #define WITHHELD_CLASSIFICATION 0x80
 #define ENTRY_SIZE 28
@@ -116,6 +118,40 @@ LASEntry  initLASEntry (uint64_t utc_time, double x, double y, double z, uint16_
 int write_las( const char * filename, LASFile las_files[], size_t number_of_file_entries);
 
 /**
+ * @brief Read a header from a file
+ * @param open fid (does no checks)
+ * @param pointer to header.
+ * @return error code 0 success.
+ */
+int read_header(FILE * fid, LASHeader * header);
+
+/**
+ * @brief Read all the entries from a file
+ * @param open fid (does no checks)
+ * @param pointer to array of entries.
+ * @param number of entries
+ * @return error code 0 success.
+ */
+int read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries);
+
+/**
+ * @brief Read a header from a file
+ * @param open fid (does no checks)
+ * @param pointer to header.
+ * @return error code 0 success.
+ */
+int write_header(FILE * fid, LASHeader * header);
+
+/**
+ * @brief Read all the entries from a file
+ * @param open fid (does no checks)
+ * @param pointer to array of entries.
+ * @param number of entries
+ * @return error code 0 success.
+ */
+int write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries);
+
+/**
  * @brief Read a LAS file from the hard drive
  * 
  * @param filename 
@@ -130,13 +166,13 @@ int read_las( const char * filename, LASFile *** las_files);
  * @param adj_pps_time in us
  * @return uint64_t in us
  */
-uint64_t AdjustedGPSTimeToUTCTime(uint64_t adj_pps_time);
+uint64_t AdjustedGPSTimeusToUTCTimeus(uint64_t adj_pps_time);
 
 /**
  * Convert UTC time to adjusted GPS time (GPS time - 1x10^9)
  * @param utc_time - UTC time in microseconds
  * @return adjusted GPS time in seconds
  */
-double UTCTimeToAdjustedGPSTime(uint64_t utc_time);
+double UTCTimeusToAdjustedGPSTime(uint64_t utc_time);
 
 #endif
