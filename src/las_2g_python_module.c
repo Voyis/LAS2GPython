@@ -100,9 +100,8 @@ static int LASEntry_init (LASEntryPython * self, PyObject * args, PyObject *kwar
     uint8_t quality = 0;
     uint64_t utc_time = 0;
 
-    static char * kwlist [] = {"x", "y", "z", "intensity", "quality", "utc_time_us"};
-
-    if (!PyArg_ParseTupleAndKeywords (args, kwargs, "|dddHbK", kwlist, &x, &y, &z, &intensity, &quality, &utc_time)) {
+    if (!PyArg_ParseTuple (args, "dddHbK", &x, &y, &z, &intensity, &quality, &utc_time)) {
+        printf ("failed parse.");
         return -1;
     }
 
@@ -112,7 +111,6 @@ static int LASEntry_init (LASEntryPython * self, PyObject * args, PyObject *kwar
     self->intensity = intensity;
     self->quality = quality;
     self->utc_time = utc_time;
-
     return 0;
 }
 
@@ -244,7 +242,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
             fclose(fid);
             return NULL;
         }
-
+        
         if (!read_header(fid, &header)) {
             //PyErr_SetString(PyExc_RuntimeError, "Failed to read header from file.");
             Py_DECREF(file_entry);
@@ -261,7 +259,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
         ((LASHeaderPython *)file_entry->header)->y_offset = header.y_offset;
         ((LASHeaderPython *)file_entry->header)->z_offset = header.z_offset;
         ((LASHeaderPython *)file_entry->header)->utc_time = AdjustedGPSTimeusToUTCTimeus(header.guid_data_4);
-
+        
         PyObject * temp = file_entry->entries;
         file_entry->entries = PyList_New( ((LASHeaderPython *)file_entry->header)->number_of_point_records );
         if (!file_entry->entries){
@@ -283,8 +281,8 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
             entries = (LASEntry *)malloc(header_entries * sizeof(LASEntry));
             size_entries = header_entries;
         }
-        uint32_t num_entries = read_entry(fid, entries, header_entries);
-        if (num_entries != header_entries) {
+        size_t num_entries = read_entry(fid, entries, header_entries);
+        if (num_entries != (ssize_t)header_entries) {
             PyErr_SetString(PyExc_RuntimeError, "Could not load entry from file.");
             Py_DECREF(file_entry);
             Py_DECREF(data_list);
@@ -313,8 +311,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
                 fclose(fid);
                 return NULL;
             }
-
-            LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, point_init);
+            LASEntryPython * point_entry = (LASEntryPython * ) PyObject_CallObject((PyObject *) &LASEntryPythonType, (PyObject *)point_init);
             if (!point_entry){
                PyErr_SetString(PyExc_RuntimeError, "Failed to create a LASEntry.");
                Py_DECREF(file_entry);
@@ -361,6 +358,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
         free (entries);
     }
     fclose(fid);
+
     return data_list;
 
 };

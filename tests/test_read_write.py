@@ -1,13 +1,15 @@
 import las_2g
-import tempfile
+import os
 
 filenames_in = ["tests/data/data_2014_255_80517711.427000.las",
                 "tests/data/data_2015_256_80517712.427000.las",
                 "tests/data/data_2016_257_80517713.427000.las"
                 ]
 
-def assert_float_equal(a, b, precision = 6):
-    assert (round (a, precision) == round (b, precision))
+
+def assert_float_equal(a, b, precision=6):
+    assert (round(a, precision) == round(b, precision))
+
 
 def test_read_file():
     data = las_2g.read_las(filenames_in[0])
@@ -24,11 +26,12 @@ def test_read_file():
     assert_float_equal(max(y), 7.522456)
     assert_float_equal(max(z), 8.522456)
 
+
 def test_write_file():
     data = las_2g.read_las(filenames_in[0])
     data.append(las_2g.read_las(filenames_in[1])[0])
     data.append(las_2g.read_las(filenames_in[2])[0])
-    
+
     data[1].entries[500].x = 1.0
     data[1].entries[500].y = 2.0
     data[1].entries[500].z = 3.0
@@ -36,11 +39,12 @@ def test_write_file():
     data[1].entries[500].quality = 123
     data[1].entries[500].utc_time = 1585756253000000
 
-    with tempfile.NamedTemporaryFile() as temp_file:
-        las_2g.write_las(temp_file.name, data)
-        data = []
-        data = las_2g.read_las(temp_file.name)
-    
+    temp_file = "test_output.las"
+    las_2g.write_las(temp_file, data)
+    data = []
+    data = las_2g.read_las(temp_file)
+    os.remove(temp_file)
+
     assert_float_equal(data[1].entries[500].x, 1.0)
     assert_float_equal(data[1].entries[500].y, 2.0)
     assert_float_equal(data[1].entries[500].z, 3.0)
@@ -48,7 +52,7 @@ def test_write_file():
     assert(data[1].entries[500].quality == 123)
     assert(data[1].entries[500].utc_time == 1585756253000000)
 
-    
+
 if __name__ == "__main__":
     test_read_file()
-    test_write_file()    
+    test_write_file()

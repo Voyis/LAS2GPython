@@ -28,7 +28,7 @@ elif "win" in platform:
     debug_extension_mod = setuptools.Extension(
         "las_2g.las_2g_python",
         ["src/las_2g_python_module.c", "src/las_2g_python.c"],
-        extra_compile_args=["-D_CRT_SECURE_NO_WARNINGS /Zi /0d"],
+        extra_compile_args=["/D_CRT_SECURE_NO_WARNINGS /Zi /0d"],
         extra_link_args=['/DEBUG']
     )
 

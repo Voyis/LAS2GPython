@@ -123,7 +123,7 @@ int write_las( const char * filename, LASFile las_files[], size_t number_of_file
  * @param pointer to header.
  * @return error code 0 success.
  */
-int read_header(FILE * fid, LASHeader * header);
+size_t read_header(FILE * fid, LASHeader * header);
 
 /**
  * @brief Read all the entries from a file
@@ -132,7 +132,7 @@ int read_header(FILE * fid, LASHeader * header);
  * @param number of entries
  * @return error code 0 success.
  */
-int read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries);
+size_t read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries);
 
 /**
  * @brief Read a header from a file
@@ -140,7 +140,7 @@ int read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries);
  * @param pointer to header.
  * @return error code 0 success.
  */
-int write_header(FILE * fid, LASHeader * header);
+size_t write_header(FILE * fid, LASHeader * header);
 
 /**
  * @brief Read all the entries from a file
@@ -149,7 +149,7 @@ int write_header(FILE * fid, LASHeader * header);
  * @param number of entries
  * @return error code 0 success.
  */
-int write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries);
+size_t write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries);
 
 /**
  * @brief Read a LAS file from the hard drive

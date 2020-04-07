@@ -17,19 +17,19 @@ const double header_scale = 0.000001;
 const double point_scale = 1000000.;
 const uint64_t diff_to_gps_epoch = (uint64_t)315964800 *(uint64_t)1000000;
 
-int read_header(FILE * fid, LASHeader * header) {
+size_t read_header(FILE * fid, LASHeader * header) {
     return fread((void *)header, sizeof(LASHeader), 1, fid);
 }
 
-int read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries) {
+size_t read_entry(FILE * fid, LASEntry * entries, size_t number_of_entries) {
     return fread((void *)entries, sizeof(LASEntry), number_of_entries, fid);
 }
 
-int write_header(FILE * fid, LASHeader * header) {
+size_t write_header(FILE * fid, LASHeader * header) {
     return fwrite((void *)header, sizeof(LASHeader), 1, fid);
 }
 
-int write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries) {
+size_t write_entries(FILE * fid, LASEntry * entries, size_t number_of_entries) {
     return fwrite((void *)(entries), sizeof(LASEntry), number_of_entries, fid);
 }
 
