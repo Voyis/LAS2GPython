@@ -215,7 +215,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
     //run the function
     LASHeader header;
     LASEntry *entries = NULL;
-    ssize_t size_entries = 0;
+    Py_ssize_t size_entries = 0;
 
     FILE * fid;
     fid = fopen(filename, "rb");
@@ -282,7 +282,7 @@ static PyObject * read_las_wrapper(PyObject * self, PyObject * args) {
             size_entries = header_entries;
         }
         size_t num_entries = read_entry(fid, entries, header_entries);
-        if (num_entries != (ssize_t)header_entries) {
+        if (num_entries != (Py_ssize_t)header_entries) {
             PyErr_SetString(PyExc_RuntimeError, "Could not load entry from file.");
             Py_DECREF(file_entry);
             Py_DECREF(data_list);
